@@ -61,12 +61,12 @@ docker compose logs -f        # watch the first-time data fetch
 ```bash
 flyctl auth login
 flyctl apps create marketdesk-bhargav    # Fly names are globally unique
-flyctl volumes create marketdesk_data --region bom --size 1   # Mumbai volume
+flyctl volumes create marketdesk_data --region sin --size 1   # Singapore volume
 flyctl deploy                                               # builds Dockerfile
 flyctl secrets set TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx   # optional
 ```
 
-`fly.toml` auto-stops the machine when idle (saves cost), binds a Mumbai
+`fly.toml` auto-stops the machine when idle (saves cost), binds a Singapore
 volume to `/app/data`, and sets `TZ=Asia/Kolkata`.
 
 **First boot on any host:** the dashboard starts immediately; the background
@@ -148,7 +148,7 @@ marketdesk/
 ├── docker-compose.yml      # one-command local run
 ├── docker/entrypoint.sh    # dashboard + 6-hourly data pipeline loop
 ├── render.yaml             # Render blueprint (Singapore + disk)
-├── fly.toml                # Fly.io app (Mumbai volume + auto-stop)
+├── fly.toml                # Fly.io app (Singapore volume + auto-stop)
 ├── .streamlit/config.toml  # server config for local + container runs
 ├── config.yaml             # scoring weights, backtest defaults, cooldowns
 ├── .env.example            # channels + broker keys template

@@ -1,10 +1,10 @@
 # Fly.io app config — https://fly.io
 # One-time setup:
-#   fly volumes create marketdesk_data --region bom --size 1
+#   fly volumes create marketdesk_data --region sin --size 1
 #   fly secrets set TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx   # optional
 #   fly deploy
 app = "marketdesk-bhargav"   # Fly app names are globally unique
-primary_region = "bom"        # Mumbai — best latency for India
+primary_region = "sin"        # Singapore — closest Fly region to India
 
 [build]
   dockerfile = "Dockerfile"
