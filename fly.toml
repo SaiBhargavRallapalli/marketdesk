@@ -1,0 +1,28 @@
+# Fly.io app config — https://fly.io
+# One-time setup:
+#   fly volumes create marketdesk_data --region bom --size 1
+#   fly secrets set TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx   # optional
+#   fly deploy
+app = "marketdesk"
+primary_region = "bom"        # Mumbai — best latency for India
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TZ = "Asia/Kolkata"
+
+[http_service]
+  internal_port = 8501
+  force_https = true
+  auto_stop_machines = true   # stop when idle to save the free/cheap allowance
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"              # streamlit + pandas + background pipeline
+
+[mounts]
+  source = "marketdesk_data"  # must match `fly volumes create` above
+  destination = "/app/data"

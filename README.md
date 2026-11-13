@@ -32,6 +32,48 @@ python3 -m venv .venv
 cp .env.example .env        # optional: Telegram/SMTP/broker keys
 ```
 
+## Deploy
+
+Three supported targets — all run the same Docker image
+(`Dockerfile` + `docker/entrypoint.sh`: dashboard in front, daily data
+pipeline looping in the background, SQLite persisted on a mounted volume).
+
+### A. Docker locally
+
+```bash
+docker compose up -d          # http://localhost:8501
+docker compose logs -f        # watch the first-time data fetch
+```
+
+### B. Render (render.yaml)
+
+1. Push this repo to GitHub (already done for `SaiBhargavRallapalli/marketdesk`).
+2. [render.com](https://render.com) → **New → Blueprint** → pick the repo.
+   Render reads `render.yaml`: Docker runtime, Singapore region,
+   health check `/_stcore/health`, 1 GB persistent disk at `/app/data`.
+3. Free tier: delete the `plan:` + `disk:` blocks from `render.yaml` first —
+   the app then re-fetches data in the background on every deploy
+   (~10-15 min for the first Nifty 500 pull).
+4. Secrets (Telegram/SMTP): add as env vars in the Render dashboard.
+
+### C. Fly.io (fly.toml)
+
+```bash
+flyctl auth login
+flyctl apps create marketdesk
+flyctl volumes create marketdesk_data --region bom --size 1   # Mumbai volume
+flyctl deploy                                               # builds Dockerfile
+flyctl secrets set TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx   # optional
+```
+
+`fly.toml` auto-stops the machine when idle (saves cost), binds a Mumbai
+volume to `/app/data`, and sets `TZ=Asia/Kolkata`.
+
+**First boot on any host:** the dashboard starts immediately; the background
+pipeline fills the empty DB over the first ~10-15 minutes, then refreshes
+every 6 hours. Upload an existing `data/marketdesk.db` via volume/file to
+skip the initial fetch.
+
 ## Daily use
 
 ```bash
@@ -102,6 +144,12 @@ New broker: subclass `marketdesk/brokers/base.py::Broker` and register in
 ```
 marketdesk/
 ├── app.py                  # Streamlit dashboard (all tabs)
+├── Dockerfile              # container image (Render / Fly / local Docker)
+├── docker-compose.yml      # one-command local run
+├── docker/entrypoint.sh    # dashboard + 6-hourly data pipeline loop
+├── render.yaml             # Render blueprint (Singapore + disk)
+├── fly.toml                # Fly.io app (Mumbai volume + auto-stop)
+├── .streamlit/config.toml  # server config for local + container runs
 ├── config.yaml             # scoring weights, backtest defaults, cooldowns
 ├── .env.example            # channels + broker keys template
 ├── marketdesk/

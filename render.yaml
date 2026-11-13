@@ -1,0 +1,29 @@
+# Render blueprint — https://render.com (renders from this GitHub repo)
+# `render.yaml` is picked up automatically on blueprint import.
+services:
+  - type: web
+    name: marketdesk
+    runtime: docker
+    region: singapore          # lowest latency for India
+    plan: starter              # paid plan required for the persistent disk below;
+                               # delete `plan` + `disk` blocks to run on the free
+                               # tier (data then re-fetches on every deploy)
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: TZ
+        value: Asia/Kolkata
+      # add channels/secrets here or in the Render dashboard:
+      # - key: TELEGRAM_BOT_TOKEN
+      #   sync: false
+      # - key: TELEGRAM_CHAT_ID
+      #   sync: false
+      # - key: SMTP_USER
+      #   sync: false
+      # - key: SMTP_PASSWORD
+      #   sync: false
+      # - key: EMAIL_TO
+      #   sync: false
+    disk:
+      name: marketdesk-data
+      mountPath: /app/data     # sqlite db + pipeline log persist across deploys
+      sizeGB: 1

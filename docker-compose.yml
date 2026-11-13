@@ -1,0 +1,20 @@
+services:
+  marketdesk:
+    build: .
+    container_name: marketdesk
+    ports:
+      - "8501:8501"
+    environment:
+      - TZ=Asia/Kolkata
+      # optional channels (same vars as .env):
+      # - TELEGRAM_BOT_TOKEN=xxx
+      # - TELEGRAM_CHAT_ID=xxx
+      # - SMTP_HOST=smtp.gmail.com
+      # - SMTP_PORT=587
+      # - SMTP_USER=xxx
+      # - SMTP_PASSWORD=xxx
+      # - EMAIL_TO=xxx
+    volumes:
+      - ./data:/app/data        # sqlite db + pipeline log survive restarts
+      - ./reports:/app/reports  # generated HTML reports
+    restart: unless-stopped
