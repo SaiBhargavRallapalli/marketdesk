@@ -1,0 +1,22 @@
+# MarketDesk configuration
+universe: nifty500          # nifty50 | nifty500  (used by `jobs.py update`)
+
+scoring:
+  # Composite "DVS" score = weighted sum of sub-scores (0-100 each)
+  weights:
+    value: 0.25
+    quality: 0.25
+    momentum: 0.30
+    growth: 0.10
+    dividend: 0.10
+
+backtest:
+  initial_capital: 1000000   # Rs 10 lakh
+  cost_bps: 5                # brokerage+slippage per side, basis points
+
+alerts:
+  # re-send a rule at most once per this many hours
+  cooldown_hours: 20
+
+cache:
+  fundamentals_ttl_hours: 20 # refresh fundamentals once a day
