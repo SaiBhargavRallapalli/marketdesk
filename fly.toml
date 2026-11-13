@@ -3,7 +3,7 @@
 #   fly volumes create marketdesk_data --region bom --size 1
 #   fly secrets set TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx   # optional
 #   fly deploy
-app = "marketdesk"
+app = "marketdesk-bhargav"   # Fly app names are globally unique
 primary_region = "bom"        # Mumbai — best latency for India
 
 [build]

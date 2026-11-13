@@ -60,7 +60,7 @@ docker compose logs -f        # watch the first-time data fetch
 
 ```bash
 flyctl auth login
-flyctl apps create marketdesk
+flyctl apps create marketdesk-bhargav    # Fly names are globally unique
 flyctl volumes create marketdesk_data --region bom --size 1   # Mumbai volume
 flyctl deploy                                               # builds Dockerfile
 flyctl secrets set TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx   # optional
