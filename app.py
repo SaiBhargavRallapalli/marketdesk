@@ -7,19 +7,22 @@ from __future__ import annotations
 import json
 from datetime import date
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 from marketdesk import alerts as A
-from marketdesk import db, market as M, portfolio as P, reports as R
+from marketdesk import db, live as LV, market as M, options as OPT
+from marketdesk import portfolio as P, reports as R
 from marketdesk import scores as S, screener as SC
 from marketdesk import backtest as BT
 from marketdesk.config import CFG, ENV_FILE, ROOT, env, email_ready, telegram_ready
 
 st.set_page_config(page_title="MarketDesk", page_icon="📊", layout="wide")
 db.init_db()
+LV.start()          # background live-quote engine (refreshes during market hours)
 
 DISCLAIMER = ("⚠️ Model scores and backtests are research aids, **not investment "
               "advice**. Data from free sources may be delayed or incomplete.")
@@ -41,7 +44,7 @@ def _closes() -> pd.DataFrame:
     return db.load_closes()
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def _movers() -> tuple[pd.DataFrame, pd.DataFrame]:
     return M.movers()
 
@@ -114,13 +117,45 @@ with st.sidebar:
     st.caption(f"Telegram {'✅' if tg_ok else '⬜'} · Email {'✅' if mail_ok else '⬜'}")
     st.caption(DISCLAIMER)
 
-tab_dash, tab_screener, tab_backtest, tab_pf, tab_stock, tab_reports, tab_alerts, tab_settings = st.tabs(
-    ["🏠 Dashboard", "🔍 Screener", "🧪 Backtest", "💼 Portfolio",
+_WDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+
+def _opt_spot(sym: str) -> float:
+    """Latest stored close for an underlying (live-updated during market hours)."""
+    h = db.load_history(sym.upper())
+    return float(h["close"].iloc[-1]) if not h.empty else 0.0
+
+
+tab_dash, tab_options, tab_screener, tab_backtest, tab_pf, tab_stock, tab_reports, tab_alerts, tab_settings = st.tabs(
+    ["🏠 Dashboard", "🧮 Options", "🔍 Screener", "🧪 Backtest", "💼 Portfolio",
      "📈 Stock", "📰 Reports", "🔔 Alerts", "⚙️ Settings"]
 )
 
 # ================================================================ dashboard
-with tab_dash:
+def _age_txt(age: int | None) -> str:
+    if age is None:
+        return "never"
+    if age < 60:
+        return f"{age}s ago"
+    if age < 3600:
+        return f"{age // 60}m {age % 60}s ago"
+    return f"{age // 3600}h ago"
+
+
+def _live_status_row() -> None:
+    """Market state + quote freshness banner (recomputed every fragment run)."""
+    s = LV.status()
+    state = "🟢 Market OPEN" if s["market_open"] else "🔴 Market closed"
+    c1, c2, c3 = st.columns([2, 3, 4])
+    c1.caption(f"{state} · {s['now']} IST")
+    c2.caption(f"🔄 live quotes: {_age_txt(s['quote_age'])} "
+               f"(engine refreshes every {s['index_seconds']}s)")
+    c3.caption("⏱️ Yahoo NSE feed is delayed ~15 min · free data, not exchange tick feed")
+
+
+@st.fragment(run_every=LV.ui_interval())
+def _dashboard_fragment() -> None:
+    _live_status_row()
     try:
         idx = M.index_snapshot()
         br = M.breadth()
@@ -197,6 +232,187 @@ with tab_dash:
             k[4].metric("Top holding", f"{pf['top_symbol']} ({pf['top_weight']:.0f}%)")
     except Exception as e:  # noqa: BLE001
         st.error(f"Dashboard error: {e}")
+
+
+with tab_dash:
+    _dashboard_fragment()
+
+# ================================================================ options
+with tab_options:
+    st.subheader("🧮 Options strategy builder")
+    st.caption("Sensibull-style payoffs on synthesized Black-Scholes chains "
+               "(India VIX + skew). **Model prices, not exchange quotes** — "
+               "verify with your broker. Margin is an approximation, not SPAN.")
+
+    o1, o2, o3, o4 = st.columns([2, 2, 2, 1])
+    und = o1.selectbox("Underlying", list(OPT.UNDERLYINGS),
+                       format_func=lambda k: OPT.UNDERLYINGS[k], key="opt_und")
+    wd = o2.selectbox("Expiry weekday", _WDAYS, index=3, key="opt_wd")
+    expiries = OPT.next_expiries(6, weekday=_WDAYS.index(wd))
+    exp = o3.selectbox("Expiry", expiries, key="opt_exp",
+                       format_func=lambda d: d.strftime("%a, %d %b %Y"))
+    lots = o4.number_input("Lots", 1, 100, 1, key="opt_lots")
+
+    spot = _opt_spot(und)
+    iv = OPT.current_iv()
+    if spot <= 0:
+        st.info("No cached prices for this underlying — run the daily update first.")
+    else:
+        st.caption(f"Spot **{spot:,.2f}** · base IV **{iv * 100:.2f}%** (India VIX) · "
+                   f"lot {OPT.lot_size(und):,} · strike step {OPT.strike_step(und)}")
+
+        tpl = st.selectbox("Strategy", list(OPT.TEMPLATES), key="opt_tpl",
+                           format_func=lambda k: OPT.TEMPLATES[k]["label"])
+        st.caption(OPT.TEMPLATES[tpl]["help"])
+
+        dte = max((exp - date.today()).days, 1)
+        legs = OPT.entry_prices(OPT.build_legs(tpl, spot, und, lots), iv, dte)
+        m = OPT.metrics(legs, spot)
+        pg = OPT.position_greeks(legs, iv, dte)
+
+        k = st.columns(6)
+        k[0].metric("Max profit", "∞" if m["unlimited_profit"]
+                    else f"₹{m['max_profit']:,.0f}")
+        k[1].metric("Max loss", f"₹{abs(m['max_loss']):,.0f}")
+        k[2].metric("Net premium", f"₹{m['net_premium']:,.0f}",
+                    delta="credit" if m["net_premium"] < 0 else "debit",
+                    delta_color="off")
+        k[3].metric("Margin (approx)", f"₹{m['margin']:,.0f}")
+        k[4].metric("ROI on max", f"{m['roi_max']:.1f}%"
+                    if m["roi_max"] == m["roi_max"] else "—")
+        k[5].metric("Breakeven(s)",
+                    ", ".join(f"{b:,.0f}" for b in m["breakevens"]) or "—")
+
+        st.markdown("**Position greeks** (₹ P&L per 1-pt / 1-day / 1-vol move)")
+        g = st.columns(4)
+        g[0].metric("Delta", f"{pg['delta']:,.0f}")
+        g[1].metric("Gamma", f"{pg['gamma']:,.2f}")
+        g[2].metric("Theta / day", f"₹{pg['theta']:,.0f}")
+        g[3].metric("Vega / vol pt", f"₹{pg['vega']:,.0f}")
+
+        st.markdown("**Payoff**")
+        grid = np.linspace(spot * 0.9, spot * 1.1, 401)
+        pe = OPT.payoff_expiry(legs, grid)
+        days_left = st.slider("MTM horizon (days to expiry)", 0, dte,
+                              min(5, dte), key="opt_days")
+        pm = OPT.payoff_mtm(legs, grid, days_left, iv)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=grid, y=pe, name="At expiry",
+                                 line=dict(color="#3a49b8", width=2)))
+        fig.add_trace(go.Scatter(x=grid, y=pm, name=f"In {days_left}d (MTM)",
+                                 line=dict(color="#f5a623", width=2, dash="dot")))
+        fig.add_hline(y=0, line_width=1, line_color="#999")
+        fig.add_vline(x=spot, line_dash="dash", line_color="#d0342c",
+                      annotation_text=f"spot {spot:,.0f}")
+        for b in m["breakevens"]:
+            fig.add_vline(x=b, line_dash="dot", line_color="#0a8a3e",
+                          annotation_text=f"BE {b:,.0f}")
+        fig.update_layout(height=420, template="plotly_white", hovermode="x unified",
+                          margin=dict(l=10, r=10, t=30, b=10),
+                          xaxis_title="Spot at expiry (₹)", yaxis_title="P&L (₹)",
+                          legend=dict(orientation="h", y=1.02))
+        st.plotly_chart(fig, width="stretch")
+
+        leg_df = pd.DataFrame([{
+            "Side": "BUY" if l["side"] > 0 else "SELL",
+            "Type": l["kind"],
+            "Strike": f"{l['strike']:,.0f}",
+            "Lots": l["qty"],
+            "Units": f"{l['qty'] * l['lot']:,}",
+            "Entry ₹": f"{l['entry']:,.2f}",
+            "IV %": f"{l['iv']:.2f}",
+            "Delta": round(l["delta"], 3),
+            "Gamma": l["gamma"],
+            "Theta/day": l["theta"],
+            "Vega": l["vega"],
+        } for l in legs])
+        st.markdown("**Legs**")
+        st.dataframe(leg_df, width="stretch", hide_index=True)
+
+        with st.expander("📋 Option chain (synthesized)", expanded=False):
+            ch = OPT.build_chain(und, spot, exp, iv, width=10)
+            st.dataframe(ch, width="stretch", hide_index=True, height=440)
+            st.caption("Synthesized with Black-Scholes from India VIX + log-moneyness "
+                       "skew — model values, not NSE quotes (NSE blocks server-side "
+                       "chain requests).")
+
+        # ------------------------------------------------------------ backtester
+        st.divider()
+        st.markdown("### ⚗️ Backtest this strategy")
+        st.caption("Rule-based entries on historical closes + India VIX. "
+                   "₹20/order per leg + 1% premium slippage. One position at a time.")
+
+        b1, b2, b3, b4 = st.columns(4)
+        rule = b1.selectbox(
+            "Entry rule", ["calendar", "rsi", "trend", "vix"], key="bt_rule",
+            format_func=lambda r: {"calendar": "📅 Every N sessions",
+                                   "rsi": "📉 RSI reversion",
+                                   "trend": "📈 Trend filter (vs SMA)",
+                                   "vix": "🌪️ VIX level"}[r])
+        params: dict = {}
+        if rule == "calendar":
+            params["every"] = b2.number_input("Every N sessions", 5, 120, 21,
+                                              key="bt_every")
+        elif rule == "rsi":
+            params["n"] = b2.number_input("RSI period", 5, 30, 14, key="bt_n")
+            params["value"] = b3.number_input("RSI level", 0, 100, 40, key="bt_val")
+            params["op"] = b4.selectbox("Condition", ["below", "above"], key="bt_op")
+        elif rule == "trend":
+            params["n"] = b2.number_input("SMA period", 10, 200, 50, key="bt_n")
+            params["op"] = b3.selectbox("Price", ["above", "below"], key="bt_op")
+        else:  # vix
+            params["value"] = b2.number_input("India VIX", 5.0, 60.0, 18.0, key="bt_val")
+            params["op"] = b3.selectbox("Condition", ["above", "below"], key="bt_op")
+
+        c1, c2, c3 = st.columns(3)
+        years = c1.selectbox("Period", [1, 2, 3], index=1, key="bt_years")
+        hold_days = c2.number_input("Max hold (sessions)", 1, 60, 5, key="bt_hold")
+        bt_lots = c3.number_input("Lots", 1, 50, 1, key="bt_lots")
+
+        if st.button("▶️ Run options backtest", type="primary", key="bt_go"):
+            with st.spinner("Backtesting…"):
+                try:
+                    st.session_state["opt_bt"] = OPT.run_backtest(
+                        tpl, und, years=years, rule=rule, params=params,
+                        hold_days=hold_days, lots=bt_lots,
+                        weekday=_WDAYS.index(wd))
+                    st.session_state["opt_bt_err"] = ""
+                except Exception as e:  # noqa: BLE001
+                    st.session_state["opt_bt"] = None
+                    st.session_state["opt_bt_err"] = str(e)
+
+        if st.session_state.get("opt_bt_err"):
+            st.info(st.session_state["opt_bt_err"])
+
+        res = st.session_state.get("opt_bt")
+        if res:
+            st.caption(f"**{OPT.TEMPLATES[res['template']]['label']}** on "
+                       f"{OPT.UNDERLYINGS.get(res['symbol'], res['symbol'])} · "
+                       f"rule `{res['rule']}` {res['params']}")
+            r1, r2 = st.columns([1, 2])
+            with r1:
+                mdf = pd.DataFrame(list(res["metrics"].items()),
+                                   columns=["Metric", "Value"])
+                mdf["Value"] = mdf["Value"].astype(str)   # mixed int/str breaks arrow
+                st.dataframe(mdf, hide_index=True, width="stretch", height=440)
+            with r2:
+                eq = res["equity"]
+                fig = go.Figure(go.Scatter(
+                    x=eq.index, y=eq, name="Equity",
+                    line=dict(color="#3a49b8", width=2)))
+                fig.add_hline(y=1_000_000, line_dash="dot", line_color="#999",
+                              annotation_text="start ₹10L")
+                fig.update_layout(height=440, template="plotly_white",
+                                  margin=dict(l=10, r=10, t=30, b=10),
+                                  yaxis_title="Capital (₹)", showlegend=False)
+                st.plotly_chart(fig, width="stretch")
+
+            st.markdown("**Trades**")
+            st.dataframe(res["trades"], width="stretch", hide_index=True, height=300)
+            st.download_button("⬇️ Trades (CSV)",
+                               res["trades"].to_csv(index=False).encode(),
+                               "options_backtest.csv", mime="text/csv")
 
 # ================================================================ screener
 def _apply_slider_filters(flt: dict) -> None:

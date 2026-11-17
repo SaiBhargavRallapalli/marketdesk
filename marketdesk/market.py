@@ -9,7 +9,8 @@ import yfinance as yf
 
 from . import db
 
-INDICES = {"NIFTY 50": "^NSEI", "SENSEX": "^BSESN", "NIFTY BANK": "^NSEBANK"}
+INDICES = {"NIFTY 50": "^NSEI", "SENSEX": "^BSESN", "NIFTY BANK": "^NSEBANK",
+           "INDIA VIX": "^INDIAVIX"}
 
 
 # ---------------------------------------------------------------- downloads

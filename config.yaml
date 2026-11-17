@@ -18,5 +18,27 @@ alerts:
   # re-send a rule at most once per this many hours
   cooldown_hours: 20
 
+live:
+  # dashboard re-render interval (seconds)
+  ui_seconds: 2
+  # during market hours (Mon-Fri 09:15-15:30 IST):
+  index_seconds: 15       # refresh ^NSEI/^BSESN/^NSEBANK
+  universe_seconds: 300   # refresh all Nifty 500 closes (Yahoo rate limits!)
+
+options:
+  rf: 0.065               # risk-free rate for Black-Scholes (India, annual)
+  q: 0.012                # continuous dividend yield (Nifty ~1.2%)
+  capital: 1000000        # starting capital for the options backtester
+  # strike steps per underlying (NSE values — verify)
+  steps:
+    "^NSEI": 50            # NIFTY
+    "^NSEBANK": 100        # BANKNIFTY
+    "^BSESN": 100          # SENSEX
+  # default lot sizes — VERIFY on nseindia.com, editable in the UI
+  lots:
+    "^NSEI": 75            # NIFTY
+    "^NSEBANK": 35         # BANKNIFTY
+    "^BSESN": 20           # SENSEX
+
 cache:
   fundamentals_ttl_hours: 20 # refresh fundamentals once a day

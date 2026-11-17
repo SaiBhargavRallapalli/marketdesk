@@ -33,6 +33,14 @@ _DEFAULTS = {
     "backtest": {"initial_capital": 1_000_000, "cost_bps": 5},
     "alerts": {"cooldown_hours": 20},
     "cache": {"fundamentals_ttl_hours": 20},
+    "live": {"ui_seconds": 2, "index_seconds": 15, "universe_seconds": 300},
+    "options": {
+        "rf": 0.065,
+        "q": 0.012,
+        "capital": 1_000_000,
+        "steps": {"^NSEI": 50, "^NSEBANK": 100, "^BSESN": 100},
+        "lots": {"^NSEI": 75, "^NSEBANK": 35, "^BSESN": 20},
+    },
 }
 
 
