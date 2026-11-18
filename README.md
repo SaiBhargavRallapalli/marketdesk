@@ -14,6 +14,8 @@ backtesting, portfolio tracking, HTML reports and Telegram/email alerts.
 | DVM score | **DVS score** — transparent weighted percentile (value 25 / quality 25 / momentum 30 / growth 10 / dividend 10) | `scores.py` |
 | Stock screeners + alerts | 20 range-filters, presets, save/load, CSV export, alert rules | `screener.py`, `alerts.py` |
 | Backtesting | SMA cross, RSI reversion, momentum rotation, buy & hold — with costs, Sharpe/Sortino/max-DD | `backtest.py` |
+| Live quotes | Background engine refreshing the whole universe every 15 s during market hours (Yahoo batch endpoint), UI auto-refresh every 2 s | `live.py` |
+| Options (Sensibull-style) | Black-Scholes chains + greeks, 13 strategy templates with payoff diagrams, approx margins, rule-based options backtester | `options.py` |
 | Portfolio report | Valuation, P&L, sector/weight allocation, vs-NIFTY curve, concentration health | `portfolio.py` |
 | Forecaster / analyst targets | Yahoo consensus target, upside, analyst count, next earnings | `fundamentals.py` |
 | Stock reports (300/mo) | HTML one-pagers: candlestick + DMAs, fundamentals, DVS breakdown | `reports.py` |
@@ -101,7 +103,13 @@ macOS launchd works too; the Settings tab can also run the pipeline manually.
 
 ## Dashboard tabs
 
-- **🏠 Dashboard** — index snapshot, breadth gauge, top gainers/losers, top DVS, portfolio card
+- **🏠 Dashboard** — auto-refreshes every 2 s during market hours: live status
+  (market state, quote age), index snapshot incl. India VIX, breadth gauge,
+  top gainers/losers, top DVS, portfolio card
+- **🧮 Options** — Sensibull-style builder: pick underlying/expiry/strategy
+  (straddles, spreads, condors, covered call…), payoff diagram at expiry +
+  MTM, position greeks, synthesized option chain, and a backtester with
+  entry rules (calendar/RSI/trend/VIX), costs and equity curve
 - **🔍 Screener** — presets (Quality compounders, Value, Momentum, High dividend…), slider filters, save/load, CSV
 - **🧪 Backtest** — strategy + basket + period, equity curve vs benchmark, full metrics
 - **💼 Portfolio** — add holdings or import from a configured broker, allocation pies, portfolio vs NIFTY
@@ -135,6 +143,8 @@ New broker: subclass `marketdesk/brokers/base.py::Broker` and register in
 ## Data sources
 
 - **Prices / indices:** Yahoo Finance (`.NS` tickers), 2-year rolling window, cached in SQLite
+- **Live quotes:** Yahoo `/v7/finance/quote` batch endpoint (all ~500 symbols in one request), Mon–Fri 09:15–15:30 IST; Yahoo's NSE feed is delayed ~15 min
+- **Options:** chains are *synthesized* (Black-Scholes from India VIX `^INDIAVIX` + log-moneyness skew) because NSE's option-chain API blocks server-side requests — model values, verify with your broker
 - **Universe:** NSE `ind_nifty50/500list.csv` (auto-refreshed weekly, falls back to niftyindices.com, then your `data/universe_*.csv`)
 - **Fundamentals & analyst targets:** Yahoo Finance `quoteSummary`
 - **Storage:** single file `data/marketdesk.db` (SQLite)
