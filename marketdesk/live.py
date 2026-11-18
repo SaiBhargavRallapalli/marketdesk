@@ -151,7 +151,10 @@ def fetch_quotes(symbols: list[str]) -> pd.DataFrame:
         last_err: Exception | None = None
         for attempt in range(2):
             try:
-                resp = yd.get(QUOTE_URL, params={"symbols": ",".join(part)})
+                # 10s cap: a hung request must not stall the 15s refresh cycle
+                # (yfinance default is 30s, which showed as ~1m quote ages).
+                resp = yd.get(QUOTE_URL, params={"symbols": ",".join(part)},
+                              timeout=10)
                 data = resp.json().get("quoteResponse", {}).get("result", [])
                 rows += [r for r in (_quote_row(q) for q in data) if r]
                 last_err = None
